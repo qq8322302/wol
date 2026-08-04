@@ -119,6 +119,16 @@ input:focus{outline:none;border-color:#667eea;background:#fff}
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="upgradeModal">
+  <div class="modal">
+    <h3>发现新版本</h3>
+    <div style="font-size:13px;color:#888;margin-bottom:4px">旧版本号：<span id="upgradeOldVer">--</span></div>
+    <div style="font-size:13px;color:#888;margin-bottom:10px">新版本号：<span id="upgradeNewVer">--</span></div>
+    <div id="upgradeInfo" style="white-space:pre-wrap;font-size:14px;color:#555;margin-bottom:12px;line-height:1.6"></div>
+    <div class="btns"><button class="btn btn-outline" id="upgradeCancel">取消</button><button class="btn btn-primary" id="upgradeConfirm">确认升级</button></div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
 <script src="oui.js"></script>
 <script>
@@ -126,6 +136,7 @@ var $=id=>document.getElementById(id);
 var toast=$('toast'),CACHE_KEY='wol_login';
 var mqttClient=null,mqttConfig=null,replyCode='',deviceUser='',devicePwd='';
 var addedDevices=[],unaddedDevices=[],editMac='',managePopupMac='',unaddedLoaded=false,pullStartY=0,pulling=false,pullEl=null,refreshPending=null;
+var upgradeUrl='';
 
 function showToast(msg,type,d){type=type||'err';d=d||2500;toast.textContent=msg;toast.className='toast '+type+' show';setTimeout(function(){toast.classList.remove('show')},d)}
 function goLogin(){deviceUser='';replyCode='';$('pageMain').classList.add('hidden');$('pageLogin').classList.remove('hidden');$('loginBtn').disabled=false}
@@ -427,6 +438,49 @@ function setupScrollLoad(elId){
   });
 }
 
+/* ---- firmware upgrade check ---- */
+function checkUpgrade(devVer){
+  var btn=$('btnCheckUpgrade');
+  btn.disabled=true;btn.textContent='检查中...';
+  fetch('wol_fw_ver.json').then(function(r){
+    if(!r.ok)throw new Error('无法获取版本信息');
+    return r.json();
+  }).then(function(data){
+    var newVer=data.new_ver||'';
+    if(!newVer){showToast('版本信息无效');btn.disabled=false;btn.textContent='检查固件升级';return;}
+    if(!devVer||devVer>=newVer){
+      showToast('当前已是最新版本','ok');
+      btn.disabled=false;btn.textContent='检查固件升级';
+    }else{
+      btn.disabled=false;btn.textContent='检查固件升级';
+      $('upgradeOldVer').textContent=devVer||'--';
+      $('upgradeNewVer').textContent=newVer;
+      $('upgradeInfo').textContent=data.info||'有新版本可用';
+      upgradeUrl=data.url||'';
+      $('upgradeModal').classList.remove('hidden');
+    }
+  }).catch(function(e){
+    showToast('检查更新失败');
+    btn.disabled=false;btn.textContent='检查固件升级';
+  });
+}
+$('upgradeCancel').onclick=function(){$('upgradeModal').classList.add('hidden')};
+$('upgradeConfirm').onclick=function(){
+  $('upgradeModal').classList.add('hidden');
+  if(!upgradeUrl){showToast('升级地址无效');return;}
+  var tpc=buildTopics();
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'ug',url:upgradeUrl}),{qos:1});
+  mqttWaitReply(tpc.reply,15000).then(function(d){
+    if(d['r']==='ok'){
+      showToast('设备准备开始升级，预计需要5分钟，期间请不要断电，保持网络畅通。','ok',8000);
+    }else{
+      showToast('升级请求失败');
+    }
+  }).catch(function(e){
+    showToast('设备无响应');
+  });
+};
+
 $('editCancel').onclick=function(){$('editModal').classList.add('hidden')};
 $('editSave').onclick=function(){
   var name=$('editName').value.trim();if(!name){showToast('名称不能为空');return}
@@ -481,7 +535,7 @@ $('settingsStatus').onclick=function(){
     mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gs'}),{qos:1});
   mqttWaitReply(tpc.reply,10000).then(function(d){
     var sec=d.up||0, dd=Math.floor(sec/86400), hh=Math.floor((sec%86400)/3600), mm=Math.floor((sec%3600)/60);
-    var verStr=''; if(d.v){var m={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};var p=d.v.split(' ');if(p.length>=4){var t=p[3].split(':');verStr=p[2]+(m[p[0]]||'00')+p[1]+'-'+(t[0]||'00')+(t[1]||'00')+(t[2]||'00')}else verStr=d.v}
+    var devVer=d.v||'';
     var h='<div style="padding:8px">';
     h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.n||'--')+'</div><div class="meta">设备名称</div></div></div>';
     h+='<div class="device"><div class="info"><div class="name">'+(d.st?'已连接':'未连接')+'</div><div class="meta">STA 状态</div></div></div>';
@@ -490,10 +544,12 @@ $('settingsStatus').onclick=function(){
     h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.k||'--')+'</div><div class="meta">子网掩码</div></div></div>';
     h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.gw||'--')+'</div><div class="meta">网关</div></div></div>';
     h+='<div class="device"><div class="info"><div class="name">'+dd+'天'+hh+'小时'+mm+'分</div><div class="meta">运行时间</div></div></div>';
-    h+='<div class="device"><div class="info"><div class="name">'+escHtml(verStr)+'</div><div class="meta">固件版本</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(devVer||'--')+'</div><div class="meta">固件版本</div></div></div>';
+    h+='<button class="btn btn-primary" style="margin-top:8px" id="btnCheckUpgrade">检查固件升级</button>';
     h+='<button class="btn btn-outline" style="margin-top:12px" id="btnBackStatus">返回设置</button></div>';
     $('listStatusDetail').innerHTML=h;
     $('btnBackStatus').onclick=function(){$('listStatusDetail').classList.add('hidden');$('listSettings').classList.remove('hidden')};
+    $('btnCheckUpgrade').onclick=function(){checkUpgrade(devVer)};
   }).catch(function(e){$('listStatusDetail').innerHTML='<div class="empty">加载失败</div>'});
 };
 
