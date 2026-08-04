@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>WOL 设备管理</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+.header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:16px 20px;text-align:center;position:sticky;top:0;z-index:10}
+.header h1{font-size:18px;font-weight:600}
+.header .sub{font-size:12px;opacity:.85;margin-top:2px}
+.card{max-width:400px;margin:40px auto;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden}
+.card .body{padding:24px 20px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:13px;font-weight:600;color:#555;margin-bottom:4px}
+input{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:10px;font-size:15px;background:#fafafa}
+input:focus{outline:none;border-color:#667eea;background:#fff}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-sm{padding:5px 10px;font-size:11px;width:auto;border-radius:6px;margin:0}
+.btn-danger{background:#f44336;color:#fff}
+.btn-outline{border:1.5px solid #667eea;color:#667eea;background:#fff}
+.btn-wake{background:#4caf50;color:#fff;padding:8px 16px;font-size:13px;width:100%}
+.btn-act-sm{padding:5px 10px;font-size:11px;border-radius:6px;margin:0;width:100%;border:none;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn-act-sm.outline{border:1.5px solid #667eea;color:#667eea;background:#fff}
+.btn-act-sm.primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:9px 10px;font-size:14px;border-radius:8px}
+.btn-act-sm.danger{background:#f44336;color:#fff}
+.btn-act-sm.wake{background:#4caf50;color:#fff;padding:9px 10px;font-size:14px;border-radius:8px}
+.tabs{display:flex;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #eee;z-index:10}
+.tab{flex:1;text-align:center;padding:12px 8px;font-size:13px;font-weight:600;color:#999;cursor:pointer;transition:.2s}
+.tab.active{color:#667eea}
+.tab .icon{font-size:20px;display:block;margin-bottom:2px}
+.list{padding:12px 16px 80px;max-width:600px;margin:0 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;height:calc(100vh - 96px)}
+.device{background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px}
+.device .info{flex:1;min-width:0}
+.device .name{font-size:15px;font-weight:600;color:#1a1a2e;display:flex;align-items:center;gap:6px}
+.device .mac{font-size:12px;color:#888;font-family:monospace;margin-top:2px}
+.device .meta{font-size:11px;color:#aaa;margin-top:2px}
+.device .actions{flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:72px;position:relative}
+.manage-popup{position:fixed;background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:6px;display:flex;flex-direction:column;gap:4px;z-index:25;white-space:nowrap}
+.manage-popup .btn-act-sm{font-size:12px;padding:6px 14px}
+.empty{text-align:center;padding:60px 20px;color:#aaa;font-size:14px}
+.pullHint{text-align:center;padding:8px;color:#ccc;font-size:12px}
+.list{transition:transform .3s}
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:20;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:16px;padding:24px;width:90%;max-width:340px}
+.modal h3{font-size:16px;margin-bottom:12px}
+.modal input{margin-bottom:10px}
+.modal .btns{display:flex;gap:8px;margin-top:12px}
+.modal .btns .btn{flex:1}
+.loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:50;display:flex;align-items:center;justify-content:center}
+.loading-box{background:#fff;border-radius:16px;padding:32px 40px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.loading-box .spinner{width:28px;height:28px;border:3px solid #667eea;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+.loading-box .text{font-size:15px;color:#333;font-weight:500}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:20px;font-size:14px;color:#fff;z-index:99;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
+.toast.err{background:#f44336}
+.toast.ok{background:#4caf50}
+.loader{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<div id="pageLogin" class="card">
+  <div class="header"><h1>WOL 设备管理</h1><div class="sub">远程管理您的 WOL 设备</div></div>
+  <div class="body">
+    <div class="field"><label>设备名称</label><input id="loginUser" placeholder="WOL-XXXXXXXXXXXX" maxlength="16" autocomplete="off"><div style="font-size:11px;color:#999;margin-top:4px">用户名为设备名称，示例: WOL-807D3A7864AA</div></div>
+    <div class="field"><label>WiFi 密码</label><input id="loginPwd" type="password" placeholder="设备连接的 WiFi 密码" maxlength="64" autocomplete="off"><div style="font-size:11px;color:#999;margin-top:4px">输入设备所连 WiFi 的密码，无密码可留空</div></div>
+    <button class="btn btn-primary" id="loginBtn">登 录</button>
+  </div>
+</div>
+
+<div class="loading-overlay hidden" id="loginLoading">
+  <div class="loading-box"><div class="spinner"></div><div class="text">正在连接设备...</div></div>
+</div>
+
+<div id="pageMain" class="hidden">
+  <div class="header"><h1>WOL 设备管理</h1><div class="sub" id="mainDevName">--</div></div>
+  <div class="list" id="listAdded"><div class="empty">加载中...</div></div>
+  <div class="list hidden" id="listUnadded"><div class="empty">加载中...</div></div>
+  <div class="list hidden" id="listSettings">
+    <div class="device" id="settingsStatus" style="cursor:pointer">
+      <div class="info"><div class="name">设备状态</div><div class="meta">查看设备运行信息</div></div>
+    </div>
+    <!--<div class="device" id="settingsScanNets" style="cursor:pointer">
+      <div class="info"><div class="name">扫描网段管理</div><div class="meta">管理 ARP 扫描网段</div></div>
+    </div>-->
+    <div class="device" id="settingsAddManual" style="cursor:pointer">
+      <div class="info"><div class="name">手动添加唤醒设备</div><div class="meta">添加未自动发现的设备</div></div>
+    </div>
+  </div>
+  <!-- manual add sub-page -->
+  <div class="list hidden" id="listAddManual"><div class="empty">加载中...</div></div>
+  <!-- status detail sub-page -->
+  <div class="list hidden" id="listStatusDetail"><div class="empty">加载中...</div></div>
+  <!-- scan nets sub-page -->
+  <div class="list hidden" id="listScanNets"><div class="empty">加载中...</div></div>
+  <div class="tabs">
+    <div class="tab active" data-tab="added"><span class="icon">&#10003;</span>已添加</div>
+    <div class="tab" data-tab="unadded"><span class="icon">+</span>未添加</div>
+    <div class="tab" data-tab="settings"><span class="icon">&#9881;</span>设置</div>
+  </div>
+</div>
+
+<div class="manage-popup hidden" id="managePopup">
+  <button class="btn-act-sm outline" id="popupEdit">设置别名</button>
+  <button class="btn-act-sm danger" id="popupRemove">移除</button>
+</div>
+
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal">
+    <h3>编辑设备名称</h3>
+    <input id="editName" placeholder="输入设备别名" maxlength="31">
+    <div class="btns"><button class="btn btn-outline" id="editCancel">取消</button><button class="btn btn-primary" id="editSave">保存</button></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+<script src="oui.js"></script>
+<script>
+var $=id=>document.getElementById(id);
+var toast=$('toast'),CACHE_KEY='wol_login';
+var mqttClient=null,mqttConfig=null,replyCode='',deviceUser='',devicePwd='';
+var addedDevices=[],unaddedDevices=[],editMac='',managePopupMac='',unaddedLoaded=false,pullStartY=0,pulling=false,pullEl=null,refreshPending=null;
+
+function showToast(msg,type,d){type=type||'err';d=d||2500;toast.textContent=msg;toast.className='toast '+type+' show';setTimeout(function(){toast.classList.remove('show')},d)}
+function goLogin(){deviceUser='';replyCode='';$('pageMain').classList.add('hidden');$('pageLogin').classList.remove('hidden');$('loginBtn').disabled=false}
+function randCode(){var ch='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',s='';for(var i=0;i<4;i++)s+=ch[Math.floor(Math.random()*ch.length)];return s}
+function byteLen(s){var len=0;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);len+=c<0x80?1:c<0x800?2:3}return len}
+function byteTruncate(s,max){var len=0;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);var b=c<0x80?1:c<0x800?2:3;if(len+b>max)return s.slice(0,i);len+=b}return s}
+function isMac12(s){return /^[0-9A-F]{12}$/.test(s)}
+function timeAgo(ts){if(!ts||ts<1e9)return'';var d=new Date(ts*1000);return d.toLocaleString('zh-CN')}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function buildTopics(u){u=(u||deviceUser||'').toUpperCase();if(!replyCode)replyCode=randCode();return{send:'/XYH/WOL1/'+u,reply:'/XYH/WOL1/'+u+'-'+replyCode}}
+
+function switchTab(name){
+  $('listAdded').classList.add('hidden');$('listUnadded').classList.add('hidden');$('listSettings').classList.add('hidden');
+  $('listStatusDetail').classList.add('hidden');$('listScanNets').classList.add('hidden');
+  $('listAddManual').classList.add('hidden');
+  if(name==='added'){$('listAdded').classList.remove('hidden')}
+  else if(name==='unadded'){
+    $('listUnadded').classList.remove('hidden');
+    if(!unaddedLoaded) fetchDevices('ud');
+  }
+  else if(name==='settings')$('listSettings').classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.tab===name)});
+}
+document.querySelectorAll('.tab').forEach(function(t){t.onclick=function(){switchTab(t.dataset.tab)}});
+
+function renderDevice(d,showActions){
+  var name;
+  if(d.n&&d.n!=='unknown'){
+    name=d.n;  /* user-set alias */
+  }else if(typeof ouiLookup==='function'){
+    var v=ouiLookup(d.c);
+    name=v||d.c;  /* vendor name, or MAC if OUI not found */
+  }else{
+    name=d.c;
+  }
+  name=byteTruncate(name,30);  /* max 31 bytes (~10 Chinese chars) */
+  var online;
+  if(d.a) online=d.o;  /* added device: use o field from quick_check */
+  else online=(d.s && Math.floor(Date.now()/1000)-d.s < 600);  /* unadded: last_seen within 10min */
+  var onlineDot=online?'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4ccf50;margin-right:4px"></span>':'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f44336;margin-right:4px"></span>';
+  var h='<div class="device"><div class="info">';
+  h+='<div class="name">'+onlineDot+escHtml(name)+'</div>';
+  h+='<div class="mac">'+d.c+'</div>';
+  h+='<div class="meta">'+d.i+' &middot; '+timeAgo(d.s)+'</div></div>';
+  if(showActions){
+    h+='<div class="actions">';
+    if(d.a){
+      /* added device: manage + wake */
+      h+='<button class="btn-act-sm outline" data-action="manage" data-mac="'+d.c+'">管理</button>';
+      h+='<button class="btn-act-sm wake" data-action="wake" data-mac="'+d.c+'">唤醒</button>';
+    }else{
+      /* unadded device: edit name + add */
+      h+='<button class="btn-act-sm outline" data-action="edit-name" data-mac="'+d.c+'">设置名称</button>';
+      h+='<button class="btn-act-sm primary" data-action="add" data-mac="'+d.c+'">添加</button>';
+    }
+    h+='</div>';
+  }
+  h+='</div>';return h;
+}
+
+function render(){
+  $('listAdded').innerHTML='<div class="pullHint">'+(refreshPending&&refreshPending.el===$('listAdded')?refreshPending.text:'下拉刷新')+'</div>'+(addedDevices.length?addedDevices.map(function(d){return renderDevice(d,true)}).join(''):'<div class="empty">暂无已添加设备</div>');
+  $('listUnadded').innerHTML='<div class="pullHint">'+(refreshPending&&refreshPending.el===$('listUnadded')?refreshPending.text:'下拉刷新')+'</div>'+(unaddedDevices.length?unaddedDevices.map(function(d){return renderDevice(d,true)}).join(''):'<div class="empty">暂无未添加设备</div>');
+  bindEvents();
+}
+function bindEvents(){
+  /* edit name button (unadded list) */
+  document.querySelectorAll('[data-action="edit-name"]').forEach(function(el){el.onclick=function(){editMac=el.dataset.mac;var dev=findDev(editMac);$('editName').value=dev&&dev.n!=='unknown'?dev.n:'';$('editModal').classList.remove('hidden')}});
+  document.querySelectorAll('[data-action="add"]').forEach(function(el){el.onclick=function(){sendAction('ad',el.dataset.mac)}});
+  document.querySelectorAll('[data-action="wake"]').forEach(function(el){el.onclick=function(){sendAction('wo',el.dataset.mac)}});
+  /* manage button (added list) — toggle popup */
+  document.querySelectorAll('[data-action="manage"]').forEach(function(el){el.onclick=function(e){e.stopPropagation();showManagePopup(el,el.dataset.mac)}});
+  /* popup buttons */
+  $('popupEdit').onclick=function(){var mac=managePopupMac;hideManagePopup();editMac=mac;var dev=findDev(editMac);$('editName').value=dev&&dev.n!=='unknown'?dev.n:'';$('editModal').classList.remove('hidden')};
+  $('popupRemove').onclick=function(){var mac=managePopupMac;hideManagePopup();sendAction('rd',mac)};
+}
+/* ---- manage popup ---- */
+function showManagePopup(btnEl,mac){
+  managePopupMac=mac;
+  var rect=btnEl.getBoundingClientRect();
+  var popup=$('managePopup');
+  /* temporarily show to measure width, hidden from view */
+  popup.classList.remove('hidden');
+  popup.style.visibility='hidden';
+  var w=popup.offsetWidth;
+  var h=popup.offsetHeight;
+  popup.style.visibility='';
+  var left=rect.left-w-8;
+  if(left<8) left=8;  /* clamp to viewport left edge */
+  var top=rect.top;
+  if(top<8) top=8;
+  if(top+h>window.innerHeight-8) top=window.innerHeight-h-8;  /* clamp to viewport bottom */
+  popup.style.top=top+'px';
+  popup.style.left=left+'px';
+}
+function hideManagePopup(){
+  $('managePopup').classList.add('hidden');
+  managePopupMac='';
+}
+/* close manage popup on scroll */
+document.addEventListener('scroll',function(){hideManagePopup()},true);
+/* click outside to close manage popup */
+document.addEventListener('click',function(e){
+  if(!$('managePopup').classList.contains('hidden')){
+    var popup=$('managePopup');
+    if(!popup.contains(e.target)&&!e.target.closest('[data-action="manage"]')){
+      hideManagePopup();
+    }
+  }
+});
+/* pull-to-refresh */
+function setupPull(elId, onRefresh){
+  var el=$(elId);
+  el.addEventListener('touchstart',function(e){pullStartY=e.touches[0].clientY;pullEl=el},{passive:true});
+  el.addEventListener('touchmove',function(e){
+    if(!pullEl||pullEl!==el)return;
+    /* only allow pull when list is at the very top */
+    if(el.scrollTop>0){el.style.transform='';pullEl=null;return;}
+    var dy=e.touches[0].clientY-pullStartY;
+    if(dy>0){e.preventDefault();el.style.transform='translateY('+Math.min(dy,80)+'px)';el.querySelector('.pullHint').textContent=dy>60?'释放刷新':'下拉刷新'}
+  },{passive:false});
+  el.addEventListener('touchend',function(e){
+    if(!pullEl||pullEl!==el)return;
+    var dy=Math.max(0,(e.changedTouches[0]||{}).clientY-pullStartY||0);
+    pullEl=null;
+    if(dy>60){
+      refreshPending={el:el,text:'刷新中...'};
+      el.querySelector('.pullHint').textContent='刷新中...';
+      el.style.transform='translateY(40px)';
+      onRefresh();
+      setTimeout(function(){
+        refreshPending={el:el,text:'刷新完成'};
+        el.querySelector('.pullHint').textContent='刷新完成';
+        setTimeout(function(){el.style.transform='';refreshPending=null;el.querySelector('.pullHint').textContent='下拉刷新'},500);
+      },1000);
+      setTimeout(function(){if(refreshPending){el.style.transform='';refreshPending=null;el.querySelector('.pullHint').textContent='下拉刷新'}},3000);
+    }else{
+      el.style.transform='';
+    }
+  });
+}
+
+async function loadConfig(){var r=await fetch('mqtt_config_wss.json');mqttConfig=await r.json()}
+
+function mqttConnect(token){
+  return new Promise(function(resolve,reject){
+    /* extract path from host URL: wss://host/path → wss://host + /path */
+    var u=new URL(mqttConfig.host);
+    var url='wss://'+u.hostname+(u.port?':'+u.port:'');
+    var opts={path:(u.pathname||'/mqtt')+(u.search||''),clientId:'web_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),keepalive:30,connectTimeout:10000,clean:true,username:'',password:token,protocolVersion:4};
+    var c=mqtt.connect(url,opts);
+    c.on('connect',function(){resolve(c)});
+    c.on('error',function(e){reject(e)});
+    setTimeout(function(){reject(new Error('timeout'))},12000);
+  });
+}
+
+function mqttWaitReply(topic,timeoutMs){
+  return new Promise(function(resolve,reject){
+    var reqId='r'+Math.random().toString(36).slice(2,10);
+    var timer=setTimeout(function(){removePR(topic,reqId);reject(new Error('timeout'))},timeoutMs||20000);
+    addPR(topic,reqId,function(d){clearTimeout(timer);removePR(topic,reqId);resolve(d)});
+  });
+}
+
+function findDev(mac){return addedDevices.find(function(x){return x.c===mac})||unaddedDevices.find(function(x){return x.c===mac})}
+
+function sendAction(method,mac){
+  var tpc=buildTopics();
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:method,c:mac}),{qos:1});
+  mqttWaitReply(tpc.reply,15000).then(function(d){
+    if(d['r']==='ok'){
+      if(method==='ad'){
+        showToast('已添加','ok');
+        /* move device from unadded → added */
+        for(var i=0;i<unaddedDevices.length;i++){
+          if(unaddedDevices[i].c===mac){
+            var dev=unaddedDevices.splice(i,1)[0];
+            dev.a=1;addedDevices.push(dev);break;
+          }
+        }
+      }else if(method==='rd'){
+        showToast('已移除','ok');
+        /* move device from added → unadded */
+        for(var i=0;i<addedDevices.length;i++){
+          if(addedDevices[i].c===mac){
+            var dev=addedDevices.splice(i,1)[0];
+            dev.a=0;unaddedDevices.push(dev);break;
+          }
+        }
+      }else if(method==='wo'){showToast('已发送唤醒命令','ok')}
+      render();
+    }else{showToast('操作失败')}
+  }).catch(function(e){showToast('设备无响应')});
+}
+
+async function doLogin(){
+  var u=$('loginUser').value.trim().toUpperCase(),p=$('loginPwd').value.trim();
+  if(!u.startsWith('WOL-')||u.length!==16||!isMac12(u.slice(4))){showToast('设备名称格式错误');return}
+  $('loginBtn').disabled=true;$('loginLoading').classList.remove('hidden');
+  try{
+    await loadConfig();
+    var tokenResp=await fetch(mqttConfig.token+'?device='+encodeURIComponent(u));
+    if(!tokenResp.ok){showToast('获取授权失败');$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden');return}
+    var tokenData=await tokenResp.json();
+    var token=tokenData.token||tokenData.t||'';
+    if(!token){showToast('授权令牌无效');$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden');return}
+    mqttClient=await mqttConnect(token);
+  }catch(e){$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden');showToast('无法连接设备');return}
+  replyCode=randCode();var tpc=buildTopics(u);
+  mqttClient.subscribe(tpc.reply,{qos:1});
+  initReplyHandler();
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'lg',u:u,p:p}),{qos:1});
+  try{
+    var d=await mqttWaitReply(tpc.reply,20000);
+    if(d['r']==='ok'){
+      deviceUser=u;devicePwd=p;
+      localStorage.setItem(CACHE_KEY,JSON.stringify({u:u,p:p}));
+      $('mainDevName').textContent=u;$('pageLogin').classList.add('hidden');$('pageMain').classList.remove('hidden');$('loginLoading').classList.add('hidden');
+      fetchDevices();
+      setupScrollLoad('listAdded');
+      setupScrollLoad('listUnadded');
+      setupPull('listAdded',function(){fetchDevices('ad')});
+      setupPull('listUnadded',function(){fetchDevices('ud')});
+    }else{showToast('登录失败');$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden')}
+  }catch(e){showToast('设备可能离线');$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden')}
+}
+
+var pendingReplies={}; /* topic → {reqId: callback} map */
+function addPR(topic,reqId,cb){if(!pendingReplies[topic])pendingReplies[topic]={};pendingReplies[topic][reqId]=cb}
+function removePR(topic,reqId){if(pendingReplies[topic]){delete pendingReplies[topic][reqId];if(!Object.keys(pendingReplies[topic]).length)delete pendingReplies[topic]}}
+
+function fetchDevices(filter){
+  filter=filter||'ad';
+  var bucket=(filter==='ud')?unaddedDevices:addedDevices;
+  bucket.length=0;unaddedLoaded=(filter==='ud');
+  bucket._nextBatch=0;bucket._totalBatches=999;
+  bucket._filter=filter;
+  var el=(bucket===unaddedDevices)?$('listUnadded'):$('listAdded');
+  el.innerHTML='<div class="pullHint">'+(refreshPending&&refreshPending.el===el?refreshPending.text:'加载中...')+'</div>';
+  loadBatch(bucket);
+}
+
+/* one global message handler — dispatches to ALL callbacks for matching topic */
+function initReplyHandler(){
+  if(!mqttClient)return;
+  mqttClient.on('message',function(t,payload){
+    try{var d=JSON.parse(payload.toString())}catch(e){console.warn('MQTT bad JSON:',payload.toString().slice(0,80));return}
+    if(d['r']==='to'){showToast('登录超时，请重新登录','err');setTimeout(goLogin,1000);return}
+    var map=pendingReplies[t];
+    if(!map){console.log('MQTT no pending cb for',t.slice(-16),'m='+d.m,'b='+d.b);return}
+    var keys=Object.keys(map);
+    console.log('MQTT disp',t.slice(-16),'keys='+keys.join(','),'m='+d.m,'b='+d.b,'devs='+(d.d?d.d.length:'?'));
+    keys.forEach(function(k){map[k](d)});
+  });
+}
+
+function loadBatch(bucket){
+  if(bucket._nextBatch>=bucket._totalBatches||bucket._loading)return;
+  bucket._loading=true;
+  var tpc=buildTopics();
+  var reqId=bucket._filter+'_b'+bucket._nextBatch;
+  var batchNum=bucket._nextBatch;
+  console.log('MQTT req',reqId,'topic',tpc.reply.slice(-16));
+  addPR(tpc.reply,reqId,function(d){
+    console.log('MQTT rcv',reqId,'devs='+(d.d?d.d.length:'?'),'l='+d.l,'b='+d.b);
+    if(d.m!=='gdl'){console.warn('MQTT bad m:',d.m,'for',reqId);return;}
+    if(d.b!==batchNum){console.warn('MQTT bad b:',d.b,'!=',batchNum,'for',reqId);return;}
+    if(d.d)d.d.forEach(function(dev){bucket.push(dev)});
+    bucket._totalBatches=d.l||1;bucket._nextBatch=d.b+1;
+    bucket._loading=false;
+    removePR(tpc.reply,reqId);
+    var cnt=bucket.length, el=(bucket===unaddedDevices)?$('listUnadded'):$('listAdded');
+    var oldScrollTop=el.scrollTop;
+    setTimeout(function(){
+      render();
+      /* restore scroll position — new devices appear below, user scrolls down to see them */
+      if(batchNum>0){el._busyScroll=true;el.scrollTop=oldScrollTop}
+      else console.log('MQTT B0 done total='+cnt,'filter='+bucket._filter);
+    },50);
+  });
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gdl',f:bucket._filter,b:bucket._nextBatch}),{qos:1});
+  setTimeout(function(){
+    if(pendingReplies[tpc.reply]&&pendingReplies[tpc.reply][reqId]){
+      console.warn('MQTT timeout',reqId);
+    }
+    removePR(tpc.reply,reqId);bucket._loading=false;
+  },15000);
+}
+function setupScrollLoad(elId){
+  var el=$(elId);
+  el.addEventListener('scroll',function(){
+    /* ignore scroll events triggered by our own scrollTop restore */
+    if(el._busyScroll){el._busyScroll=false;return}
+    if(el.scrollTop+el.clientHeight>=el.scrollHeight-60){
+      var bucket=(elId==='listAdded')?addedDevices:unaddedDevices;
+      if(bucket._nextBatch<bucket._totalBatches) loadBatch(bucket);
+    }
+  });
+}
+
+$('editCancel').onclick=function(){$('editModal').classList.add('hidden')};
+$('editSave').onclick=function(){
+  var name=$('editName').value.trim();if(!name){showToast('名称不能为空');return}
+  if(byteLen(name)>31){showToast('名称过长（最多31字节/16个中文）');return}
+  $('editModal').classList.add('hidden');var tpc=buildTopics();
+  
+    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'sa',c:editMac,n:name}),{qos:1});
+  mqttWaitReply(tpc.reply,10000).then(function(d){
+    if(d['r']==='ok'){var dev=findDev(editMac);if(dev)dev.n=name;render();showToast('已更新','ok')}else showToast('更新失败')
+  }).catch(function(e){showToast('超时')});
+};
+
+/* ---- settings: manual add device ---- */
+$('settingsAddManual').onclick=function(){
+  $('listSettings').classList.add('hidden');$('listAddManual').classList.remove('hidden');
+  var h='<div style="padding:8px">';
+  h+='<div class="field"><label>设备名称</label><input id="manName" placeholder="输入设备别名（可选）" maxlength="31"></div>';
+  h+='<div class="field"><label>MAC 地址</label><input id="manMac" placeholder="示例: 1C:69:7A:65:C3:CC" maxlength="17" autocomplete="off"><div class="hint" style="font-size:11px;color:#999;margin-top:4px">仅允许 0-9 A-F 和 :</div></div>';
+  h+='<button class="btn btn-primary" id="btnAddManual">添加</button>';
+  h+='<button class="btn btn-outline" style="margin-top:8px" id="btnBackManual">返回设置</button></div>';
+  $('listAddManual').innerHTML=h;
+  $('btnBackManual').onclick=function(){$('listAddManual').classList.add('hidden');$('listSettings').classList.remove('hidden')};
+  /* MAC input filter */
+  $('manMac').addEventListener('input',function(e){
+    var v=e.target.value.toUpperCase().replace(/[^0-9A-F:]/g,'');
+    /* auto-insert colons */
+    var clean=v.replace(/:/g,''),out='';
+    for(var i=0;i<clean.length&&i<12;i++){if(i>0&&i%2===0)out+=':';out+=clean[i]}
+    e.target.value=out;
+  });
+  $('btnAddManual').onclick=function(){
+    var mac=$('manMac').value.trim().toUpperCase(),name=$('manName').value.trim();
+    if(mac.length!==17){showToast('MAC 地址格式错误');return}
+    if(name && byteLen(name)>31){showToast('名称过长（最多31字节/16个中文）');return}
+    var tpc=buildTopics();
+    
+      mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'am',c:mac,n:name||undefined}),{qos:1});
+    mqttWaitReply(tpc.reply,10000).then(function(d){
+      if(d['r']==='ok'){showToast('已添加','ok');fetchDevices('ad')}else showToast('添加失败')
+    }).catch(function(e){showToast('超时')});
+  };
+};
+
+$('loginBtn').onclick=doLogin;
+['loginUser','loginPwd'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()})});
+
+/* ---- settings: device status ---- */
+$('settingsStatus').onclick=function(){
+  $('listSettings').classList.add('hidden');$('listStatusDetail').classList.remove('hidden');
+  var tpc=buildTopics();
+  
+    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gs'}),{qos:1});
+  mqttWaitReply(tpc.reply,10000).then(function(d){
+    var sec=d.up||0, dd=Math.floor(sec/86400), hh=Math.floor((sec%86400)/3600), mm=Math.floor((sec%3600)/60);
+    var verStr=''; if(d.v){var m={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};var p=d.v.split(' ');if(p.length>=4){var t=p[3].split(':');verStr=p[2]+(m[p[0]]||'00')+p[1]+'-'+(t[0]||'00')+(t[1]||'00')+(t[2]||'00')}else verStr=d.v}
+    var h='<div style="padding:8px">';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.n||'--')+'</div><div class="meta">设备名称</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+(d.st?'已连接':'未连接')+'</div><div class="meta">STA 状态</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.ss||'--')+'</div><div class="meta">WiFi SSID</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.i||'--')+'</div><div class="meta">IP 地址</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.k||'--')+'</div><div class="meta">子网掩码</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(d.gw||'--')+'</div><div class="meta">网关</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+dd+'天'+hh+'小时'+mm+'分</div><div class="meta">运行时间</div></div></div>';
+    h+='<div class="device"><div class="info"><div class="name">'+escHtml(verStr)+'</div><div class="meta">固件版本</div></div></div>';
+    h+='<button class="btn btn-outline" style="margin-top:12px" id="btnBackStatus">返回设置</button></div>';
+    $('listStatusDetail').innerHTML=h;
+    $('btnBackStatus').onclick=function(){$('listStatusDetail').classList.add('hidden');$('listSettings').classList.remove('hidden')};
+  }).catch(function(e){$('listStatusDetail').innerHTML='<div class="empty">加载失败</div>'});
+};
+
+/* ---- settings: scan nets ---- */
+/*$('settingsScanNets').onclick=function(){
+  $('listSettings').classList.add('hidden');$('listScanNets').classList.remove('hidden');
+  loadScanNets();
+};*/
+
+function loadScanNets(){
+  var tpc=buildTopics();
+  
+    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gn'}),{qos:1});
+  mqttWaitReply(tpc.reply,10000).then(function(d){
+    var nets=d.ns||[];
+    var h='';
+    nets.forEach(function(n,i){
+      var maskBits=(n.k.split('.').reduce(function(a,b){return a+(parseInt(b)>>>0).toString(2).split('1').length-1},0));
+      var maxHosts=Math.pow(2,32-maskBits)-2;
+      h+='<div class="device"><div class="info"><div class="name">'+escHtml(n.i)+' / '+escHtml(n.k)+'</div><div class="meta">最大 '+maxHosts+' 台设备</div></div>';
+      if(!n.df)h+='<div class="actions"><button class="btn btn-sm btn-danger" data-delnet="'+n.i+'">移除</button></div>';
+      h+='</div>';
+    });
+    h+='<div class="device" style="background:#f8f9ff"><div class="info">';
+    h+='<input id="newNetIp" placeholder="IP 地址" style="margin-bottom:6px">';
+    h+='<input id="newNetMask" placeholder="子网掩码" style="margin-bottom:6px">';
+    h+='</div><div class="actions"><button class="btn btn-sm btn-primary" id="btnAddNet">添加</button></div></div>';
+    h+='<button class="btn btn-outline" style="margin-top:12px" id="btnBackNets">返回设置</button>';
+    $('listScanNets').innerHTML=h;
+    $('btnBackNets').onclick=function(){$('listScanNets').classList.add('hidden');$('listSettings').classList.remove('hidden')};
+    $('btnAddNet').onclick=function(){
+      var ip=$('newNetIp').value.trim(),mask=$('newNetMask').value.trim();
+      if(!ip||!mask){showToast('请填写 IP 和子网掩码');return}
+      var tpc2=buildTopics();
+        mqttClient.publish(tpc2.send,JSON.stringify({t:tpc2.reply,m:'an',i:ip,k:mask}),{qos:1});
+      
+      mqttWaitReply(tpc2.reply,10000).then(function(r){showToast(r['r']==='ok'?'已添加':(r['r']==='full'?'已达上限':'失败'),r['r']==='ok'?'ok':'err');loadScanNets()}).catch(function(e){showToast('超时')});
+    };
+    document.querySelectorAll('[data-delnet]').forEach(function(el){el.onclick=function(){
+      var tpc2=buildTopics();
+        mqttClient.publish(tpc2.send,JSON.stringify({t:tpc2.reply,m:'rn',i:el.dataset.delnet}),{qos:1});
+      
+      mqttWaitReply(tpc2.reply,10000).then(function(r){showToast(r['r']==='ok'?'已移除':'失败',r['r']==='ok'?'ok':'err');loadScanNets()}).catch(function(e){showToast('超时')});
+    }});
+  }).catch(function(e){$('listScanNets').innerHTML='<div class="empty">加载失败</div>'});
+}
+(function(){
+  var cached=localStorage.getItem(CACHE_KEY);
+  if(cached){try{var d=JSON.parse(cached);$('loginUser').value=d.u||'';$('loginPwd').value=d.p||''}catch(e){}}
+  var params=new URLSearchParams(location.search);
+  if(params.get('user'))$('loginUser').value=params.get('user').toUpperCase();
+  if(params.get('pwd'))$('loginPwd').value=params.get('pwd');
+})();
+</script>
+</body>
+</html>
