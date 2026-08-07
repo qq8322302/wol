@@ -140,12 +140,32 @@ var upgradeUrl='';
 
 function showToast(msg,type,d){type=type||'err';d=d||2500;toast.textContent=msg;toast.className='toast '+type+' show';setTimeout(function(){toast.classList.remove('show')},d)}
 function goLogin(){deviceUser='';replyCode='';$('pageMain').classList.add('hidden');$('pageLogin').classList.remove('hidden');$('loginBtn').disabled=false}
+function mqttDisconnect(){
+  if(!mqttClient)return;
+  var c=mqttClient;mqttClient=null;
+  pendingReplies={};
+  try{c.end(true)}catch(e){}
+  showToast('连接已断开，请重新登录','err',4000);
+  setTimeout(goLogin,500);
+}
 function randCode(){var ch='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',s='';for(var i=0;i<4;i++)s+=ch[Math.floor(Math.random()*ch.length)];return s}
 function byteLen(s){var len=0;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);len+=c<0x80?1:c<0x800?2:3}return len}
 function byteTruncate(s,max){var len=0;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);var b=c<0x80?1:c<0x800?2:3;if(len+b>max)return s.slice(0,i);len+=b}return s}
 function isMac12(s){return /^[0-9A-F]{12}$/.test(s)}
 function timeAgo(ts){if(!ts||ts<1e9)return'';var d=new Date(ts*1000);return d.toLocaleString('zh-CN')}
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function ouiLookup(mac){
+  var clean=mac.replace(/[^0-9A-Fa-f]/g,'').slice(0,6);
+  if(clean.length<6)return null;
+  var p=parseInt(clean,16);
+  var lo=0,hi=OUI_RANGES.length-1;
+  while(lo<=hi){
+    var mid=(lo+hi)>>1, r=OUI_RANGES[mid];
+    if(p===r[0])return r[1];
+    if(p<r[0])hi=mid-1; else lo=mid+1;
+  }
+  return null;
+}
 function buildTopics(u){u=(u||deviceUser||'').toUpperCase();if(!replyCode)replyCode=randCode();return{send:'/XYH/WOL1/'+u,reply:'/XYH/WOL1/'+u+'-'+replyCode}}
 
 function switchTab(name){
@@ -286,7 +306,7 @@ function mqttConnect(token){
     /* extract path from host URL: wss://host/path → wss://host + /path */
     var u=new URL(mqttConfig.host);
     var url='wss://'+u.hostname+(u.port?':'+u.port:'');
-    var opts={path:(u.pathname||'/mqtt')+(u.search||''),clientId:'web_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),keepalive:30,connectTimeout:10000,clean:true,username:'',password:token,protocolVersion:4};
+    var opts={path:(u.pathname||'/mqtt')+(u.search||''),clientId:'web_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),keepalive:30,connectTimeout:10000,clean:true,username:'',password:token,protocolVersion:4,reconnectPeriod:0};
     var c=mqtt.connect(url,opts);
     c.on('connect',function(){resolve(c)});
     c.on('error',function(e){reject(e)});
@@ -345,6 +365,8 @@ async function doLogin(){
     var token=tokenData.token||tokenData.t||'';
     if(!token){showToast('授权令牌无效');$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden');return}
     mqttClient=await mqttConnect(token);
+    mqttClient.on('close',mqttDisconnect);
+    mqttClient.on('offline',mqttDisconnect);
   }catch(e){$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden');showToast('无法连接设备');return}
   replyCode=randCode();var tpc=buildTopics(u);
   mqttClient.subscribe(tpc.reply,{qos:1});
