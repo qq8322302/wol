@@ -326,7 +326,7 @@ function findDev(mac){return addedDevices.find(function(x){return x.c===mac})||u
 
 function sendAction(method,mac){
   var tpc=buildTopics();
-  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:method,c:mac}),{qos:1});
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:method,c:mac}),{qos:0});
   mqttWaitReply(tpc.reply,15000).then(function(d){
     if(d['r']==='ok'){
       if(method==='ad'){
@@ -369,9 +369,9 @@ async function doLogin(){
     mqttClient.on('offline',mqttDisconnect);
   }catch(e){$('loginBtn').disabled=false;$('loginLoading').classList.add('hidden');showToast('无法连接设备');return}
   replyCode=randCode();var tpc=buildTopics(u);
-  mqttClient.subscribe(tpc.reply,{qos:1});
+  mqttClient.subscribe(tpc.reply,{qos:0});
   initReplyHandler();
-  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'lg',u:u,p:p}),{qos:1});
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'lg',u:u,p:p}),{qos:0});
   try{
     var d=await mqttWaitReply(tpc.reply,20000);
     if(d['r']==='ok'){
@@ -440,7 +440,7 @@ function loadBatch(bucket){
       else console.log('MQTT B0 done total='+cnt,'filter='+bucket._filter);
     },50);
   });
-  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gdl',f:bucket._filter,b:bucket._nextBatch}),{qos:1});
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gdl',f:bucket._filter,b:bucket._nextBatch}),{qos:0});
   setTimeout(function(){
     if(pendingReplies[tpc.reply]&&pendingReplies[tpc.reply][reqId]){
       console.warn('MQTT timeout',reqId);
@@ -491,7 +491,7 @@ $('upgradeConfirm').onclick=function(){
   $('upgradeModal').classList.add('hidden');
   if(!upgradeUrl){showToast('升级地址无效');return;}
   var tpc=buildTopics();
-  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'ug',url:upgradeUrl}),{qos:1});
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'ug',url:upgradeUrl}),{qos:0});
   mqttWaitReply(tpc.reply,15000).then(function(d){
     if(d['r']==='ok'){
       showToast('设备准备开始升级，预计需要5分钟，期间请不要断电，保持网络畅通。','ok',8000);
@@ -509,7 +509,7 @@ $('editSave').onclick=function(){
   if(byteLen(name)>31){showToast('名称过长（最多31字节/16个中文）');return}
   $('editModal').classList.add('hidden');var tpc=buildTopics();
   
-    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'sa',c:editMac,n:name}),{qos:1});
+    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'sa',c:editMac,n:name}),{qos:0});
   mqttWaitReply(tpc.reply,10000).then(function(d){
     if(d['r']==='ok'){var dev=findDev(editMac);if(dev)dev.n=name;render();showToast('已更新','ok')}else showToast('更新失败')
   }).catch(function(e){showToast('超时')});
@@ -539,7 +539,7 @@ $('settingsAddManual').onclick=function(){
     if(name && byteLen(name)>31){showToast('名称过长（最多31字节/16个中文）');return}
     var tpc=buildTopics();
     
-      mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'am',c:mac,n:name||undefined}),{qos:1});
+      mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'am',c:mac,n:name||undefined}),{qos:0});
     mqttWaitReply(tpc.reply,10000).then(function(d){
       if(d['r']==='ok'){showToast('已添加','ok');fetchDevices('ad')}else showToast('添加失败')
     }).catch(function(e){showToast('超时')});
@@ -554,7 +554,7 @@ $('settingsStatus').onclick=function(){
   $('listSettings').classList.add('hidden');$('listStatusDetail').classList.remove('hidden');
   var tpc=buildTopics();
   
-    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gs'}),{qos:1});
+    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gs'}),{qos:0});
   mqttWaitReply(tpc.reply,10000).then(function(d){
     var sec=d.up||0, dd=Math.floor(sec/86400), hh=Math.floor((sec%86400)/3600), mm=Math.floor((sec%3600)/60);
     var devVer=d.v||'';
@@ -584,7 +584,7 @@ $('settingsStatus').onclick=function(){
 function loadScanNets(){
   var tpc=buildTopics();
   
-    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gn'}),{qos:1});
+    mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'gn'}),{qos:0});
   mqttWaitReply(tpc.reply,10000).then(function(d){
     var nets=d.ns||[];
     var h='';
@@ -606,13 +606,13 @@ function loadScanNets(){
       var ip=$('newNetIp').value.trim(),mask=$('newNetMask').value.trim();
       if(!ip||!mask){showToast('请填写 IP 和子网掩码');return}
       var tpc2=buildTopics();
-        mqttClient.publish(tpc2.send,JSON.stringify({t:tpc2.reply,m:'an',i:ip,k:mask}),{qos:1});
+        mqttClient.publish(tpc2.send,JSON.stringify({t:tpc2.reply,m:'an',i:ip,k:mask}),{qos:0});
       
       mqttWaitReply(tpc2.reply,10000).then(function(r){showToast(r['r']==='ok'?'已添加':(r['r']==='full'?'已达上限':'失败'),r['r']==='ok'?'ok':'err');loadScanNets()}).catch(function(e){showToast('超时')});
     };
     document.querySelectorAll('[data-delnet]').forEach(function(el){el.onclick=function(){
       var tpc2=buildTopics();
-        mqttClient.publish(tpc2.send,JSON.stringify({t:tpc2.reply,m:'rn',i:el.dataset.delnet}),{qos:1});
+        mqttClient.publish(tpc2.send,JSON.stringify({t:tpc2.reply,m:'rn',i:el.dataset.delnet}),{qos:0});
       
       mqttWaitReply(tpc2.reply,10000).then(function(r){showToast(r['r']==='ok'?'已移除':'失败',r['r']==='ok'?'ok':'err');loadScanNets()}).catch(function(e){showToast('超时')});
     }});
