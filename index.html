@@ -137,7 +137,7 @@ var $=id=>document.getElementById(id);
 var toast=$('toast'),CACHE_KEY='wol_login';
 var mqttClient=null,mqttConfig=null,replyCode='',deviceUser='',devicePwd='';
 var addedDevices=[],unaddedDevices=[],editMac='',managePopupMac='',unaddedLoaded=false,pullStartY=0,pulling=false,pullEl=null,refreshPending=null;
-var upgradeUrl='';
+var upgradeUrl='',wakeLastTs={};
 
 function showToast(msg,type,d){type=type||'err';d=d||2500;toast.textContent=msg;toast.className='toast '+type+' show';setTimeout(function(){toast.classList.remove('show')},d)}
 function goLogin(){deviceUser='';replyCode='';$('pageMain').classList.add('hidden');$('pageLogin').classList.remove('hidden');$('loginBtn').disabled=false}
@@ -227,7 +227,13 @@ function bindEvents(){
   /* edit name button (unadded list) */
   document.querySelectorAll('[data-action="edit-name"]').forEach(function(el){el.onclick=function(){editMac=el.dataset.mac;var dev=findDev(editMac);$('editName').value=dev&&dev.n!=='unknown'?dev.n:'';$('editModal').classList.remove('hidden')}});
   document.querySelectorAll('[data-action="add"]').forEach(function(el){el.onclick=function(){sendAction('ad',el.dataset.mac)}});
-  document.querySelectorAll('[data-action="wake"]').forEach(function(el){el.onclick=function(){sendAction('wo',el.dataset.mac)}});
+  document.querySelectorAll('[data-action="wake"]').forEach(function(el){el.onclick=function(){
+    var mac=el.dataset.mac,now=Date.now();
+    /* 限制同一设备 1 秒内只能唤醒一次，避免快速连点重复下发 */
+    if(wakeLastTs[mac]&&now-wakeLastTs[mac]<1000){return}
+    wakeLastTs[mac]=now;
+    sendAction('wo',mac);
+  }});
   /* manage button (added list) — toggle popup */
   document.querySelectorAll('[data-action="manage"]').forEach(function(el){el.onclick=function(e){e.stopPropagation();showManagePopup(el,el.dataset.mac)}});
   /* popup buttons */
@@ -496,6 +502,15 @@ $('upgradeConfirm').onclick=function(){
   mqttWaitReply(tpc.reply,15000).then(function(d){
     if(d['r']==='ok'){
       showToast('设备准备开始升级，预计需要5分钟，期间请不要断电，保持网络畅通。','ok',8000);
+      /* 升级开始后设备将重启，提示结束后退出到登录页 */
+      setTimeout(function(){
+        if(mqttClient){
+          var c=mqttClient;mqttClient=null;
+          pendingReplies={};
+          try{c.end(true)}catch(e){}
+        }
+        goLogin();
+      },8000);
     }else{
       showToast('升级请求失败');
     }
