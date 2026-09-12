@@ -108,6 +108,7 @@ input:focus{outline:none;border-color:#667eea;background:#fff}
 
 <div class="manage-popup hidden" id="managePopup">
   <button class="btn-act-sm outline" id="popupEdit">设置别名</button>
+  <button class="btn-act-sm outline" id="popupBindKey">绑定按键</button>
   <button class="btn-act-sm danger" id="popupRemove">移除</button>
 </div>
 
@@ -116,6 +117,23 @@ input:focus{outline:none;border-color:#667eea;background:#fff}
     <h3>编辑设备名称</h3>
     <input id="editName" placeholder="输入设备别名" maxlength="31">
     <div class="btns"><button class="btn btn-outline" id="editCancel">取消</button><button class="btn btn-primary" id="editSave">保存</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="bindKeyModal">
+  <div class="modal">
+    <h3>绑定按键</h3>
+    <input id="bindKeyName" placeholder="输入6位十六进制值" maxlength="6" autocomplete="off">
+    <div style="font-size:11px;color:#999;margin-top:-4px;margin-bottom:10px">仅允许 0-9 A-F，共 6 位</div>
+    <div class="btns"><button class="btn btn-outline" id="bindKeyCancel">取消</button><button class="btn btn-primary" id="bindKeySave">确定</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="unbindKeyModal">
+  <div class="modal">
+    <h3>解除按键</h3>
+    <div style="font-size:13px;color:#888;margin-bottom:12px">确定要解除该设备的按键绑定吗？</div>
+    <div class="btns"><button class="btn btn-outline" id="unbindKeyCancel">取消</button><button class="btn btn-primary" id="unbindKeyConfirm">确认</button></div>
   </div>
 </div>
 
@@ -137,7 +155,7 @@ var $=id=>document.getElementById(id);
 var toast=$('toast'),CACHE_KEY='wol_login';
 var mqttClient=null,mqttConfig=null,replyCode='',deviceUser='',devicePwd='';
 var addedDevices=[],unaddedDevices=[],editMac='',managePopupMac='',unaddedLoaded=false,pullStartY=0,pulling=false,pullEl=null,refreshPending=null;
-var upgradeUrl='',wakeLastTs={};
+var upgradeUrl='',wakeLastTs={},bindKeyMac='';
 
 function showToast(msg,type,d){type=type||'err';d=d||2500;toast.textContent=msg;toast.className='toast '+type+' show';setTimeout(function(){toast.classList.remove('show')},d)}
 function goLogin(){deviceUser='';replyCode='';$('pageMain').classList.add('hidden');$('pageLogin').classList.remove('hidden');$('loginBtn').disabled=false}
@@ -238,11 +256,27 @@ function bindEvents(){
   document.querySelectorAll('[data-action="manage"]').forEach(function(el){el.onclick=function(e){e.stopPropagation();showManagePopup(el,el.dataset.mac)}});
   /* popup buttons */
   $('popupEdit').onclick=function(){var mac=managePopupMac;hideManagePopup();editMac=mac;var dev=findDev(editMac);$('editName').value=dev&&dev.n!=='unknown'?dev.n:'';$('editModal').classList.remove('hidden')};
+  $('popupBindKey').onclick=function(){
+    var mac=managePopupMac;
+    hideManagePopup();
+    var dev=findDev(mac);
+    if(dev&&dev.k&&dev.k.length===6){
+      bindKeyMac=mac;
+      $('unbindKeyModal').classList.remove('hidden');
+    }else{
+      bindKeyMac=mac;
+      $('bindKeyName').value='';
+      $('bindKeyModal').classList.remove('hidden');
+    }
+  };
   $('popupRemove').onclick=function(){var mac=managePopupMac;hideManagePopup();sendAction('rd',mac)};
 }
 /* ---- manage popup ---- */
 function showManagePopup(btnEl,mac){
   managePopupMac=mac;
+  var dev=findDev(mac);
+  var hasKey=dev&&dev.k&&dev.k.length===6;
+  $('popupBindKey').textContent=hasKey?'解除按键':'绑定按键';
   var rect=btnEl.getBoundingClientRect();
   var popup=$('managePopup');
   /* temporarily show to measure width, hidden from view */
@@ -357,6 +391,21 @@ function sendAction(method,mac){
       }else if(method==='wo'){showToast('已发送唤醒命令','ok')}
       render();
     }else{showToast('操作失败')}
+  }).catch(function(e){showToast('设备无响应')});
+}
+
+function sendBindKey(mac,key){
+  var tpc=buildTopics();
+  mqttClient.publish(tpc.send,JSON.stringify({t:tpc.reply,m:'bk',c:mac,k:key}),{qos:0});
+  mqttWaitReply(tpc.reply,10000).then(function(d){
+    if(d['r']==='ok'){
+      var dev=findDev(mac);
+      if(dev)dev.k=(d['k']!==undefined?d['k']:(key||''));
+      render();
+      showToast(key?'绑定成功':'已解除绑定','ok');
+    }else{
+      showToast(key?'绑定失败':'解除失败');
+    }
   }).catch(function(e){showToast('设备无响应')});
 }
 
@@ -520,6 +569,23 @@ $('upgradeConfirm').onclick=function(){
 };
 
 $('editCancel').onclick=function(){$('editModal').classList.add('hidden')};
+$('bindKeyCancel').onclick=function(){$('bindKeyModal').classList.add('hidden')};
+$('unbindKeyCancel').onclick=function(){$('unbindKeyModal').classList.add('hidden')};
+$('unbindKeyConfirm').onclick=function(){
+  $('unbindKeyModal').classList.add('hidden');
+  sendBindKey(bindKeyMac,'');
+};
+/* 绑定按键输入：仅 0-9 A-F，自动转大写，最多6位 */
+$('bindKeyName').addEventListener('input',function(e){
+  var v=e.target.value.toUpperCase().replace(/[^0-9A-F]/g,'').slice(0,6);
+  if(e.target.value!==v)e.target.value=v;
+});
+$('bindKeySave').onclick=function(){
+  var key=$('bindKeyName').value.trim().toUpperCase();
+  if(key.length!==6){showToast('请输入6位十六进制按键值');return}
+  $('bindKeyModal').classList.add('hidden');
+  sendBindKey(bindKeyMac,key);
+};
 $('editSave').onclick=function(){
   var name=$('editName').value.trim();if(!name){showToast('名称不能为空');return}
   if(byteLen(name)>31){showToast('名称过长（最多31字节/16个中文）');return}
